@@ -1,17 +1,13 @@
-//
-//  MyPortalApp.swift
-//  MyPortal
-//
-//  Created by Rowan Richards on 16/05/2026.
-//
-
 import SwiftUI
 
 @main
 struct MyPortalApp: App {
+    @State private var session = AppSession()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
+                .environment(session)
         }
     }
 }
