@@ -30,8 +30,18 @@ struct PortalRouter: View {
 }
 
 #Preview("Unknown type") {
-    PortalRouter(user: UserInfo(userId: "x", userType: .unknown))
-        .environment(AppSession.preview(phase: .authenticated(UserInfo(userId: "x", userType: .unknown))))
+    let unknown = UserInfo(
+        id: UUID(),
+        username: "x",
+        email: nil,
+        userType: .unknown,
+        isEnabled: true,
+        isSystem: false,
+        displayName: "Unknown",
+        permissions: []
+    )
+    PortalRouter(user: unknown)
+        .environment(AppSession.preview(phase: .authenticated(unknown)))
 }
 #endif
 

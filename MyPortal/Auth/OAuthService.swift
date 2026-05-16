@@ -11,10 +11,14 @@ enum OAuthError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingSchool: return "No school is configured."
-        case .missingCode: return "Authorization code was not returned."
-        case .userCancelled: return "Sign in was cancelled."
-        case .tokenExchange(let msg): return "Token exchange failed: \(msg)"
+        case .missingSchool:
+            return String(localized: "No school is configured.")
+        case .missingCode:
+            return String(localized: "Authorization code was not returned.")
+        case .userCancelled:
+            return String(localized: "Sign in was cancelled.")
+        case .tokenExchange(let msg):
+            return String(localized: "Token exchange failed: \(msg)")
         }
     }
 }

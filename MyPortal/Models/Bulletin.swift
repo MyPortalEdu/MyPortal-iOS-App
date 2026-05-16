@@ -45,10 +45,10 @@ nonisolated enum BulletinAudienceKind: Int, Codable, Sendable {
 
     var displayName: String {
         switch self {
-        case .allStaff:     return "All staff"
-        case .allPupils:    return "All pupils"
-        case .allParents:   return "All parents"
-        case .studentGroup: return "Student group"
+        case .allStaff:     return String(localized: "All staff")
+        case .allPupils:    return String(localized: "All pupils")
+        case .allParents:   return String(localized: "All parents")
+        case .studentGroup: return String(localized: "Student group")
         }
     }
 }
@@ -99,4 +99,26 @@ extension BulletinDetails {
     }
 
     var isPinned: Bool { pinnedAt != nil }
+}
+
+// MARK: - Upsert request shapes
+
+nonisolated struct BulletinAudienceRequest: Codable, Equatable, Sendable {
+    let audienceKind: BulletinAudienceKind
+    let studentGroupId: UUID?
+}
+
+nonisolated struct BulletinUpsertRequest: Codable, Sendable {
+    let expiresAt: Date?
+    let categoryId: UUID
+    let title: String
+    let detail: String
+    let requiresAcknowledgement: Bool
+    let isPinned: Bool
+    let audiences: [BulletinAudienceRequest]
+    let expectedVersion: Int
+}
+
+nonisolated struct IdResponse: Codable, Sendable {
+    let id: UUID
 }

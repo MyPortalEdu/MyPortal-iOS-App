@@ -15,13 +15,35 @@ final class AppSession {
     private(set) var phase: Phase = .loading
     private(set) var school: SchoolConfig?
 
-    let apiClient: APIClient
+    /// Convenience: the authenticated user (or nil if not signed in). Views
+    /// reach for this to gate permission-sensitive UI without unwrapping `phase`.
+    var me: UserInfo? {
+        if case .authenticated(let user) = phase { return user }
+        return nil
+    }
 
-    // Default expression is `nil` rather than `LiveAPIClient.shared` because
-    // default-arg expressions are evaluated nonisolated regardless of the
-    // enclosing init's isolation, and `LiveAPIClient.shared` is MainActor.
-    init(apiClient: APIClient? = nil) {
-        self.apiClient = apiClient ?? LiveAPIClient.shared
+    // MARK: - Services
+    //
+    // Exposed so views/view-models depend on domain methods rather than URL
+    // strings. Default to Live implementations layered over the APIClient;
+    // previews can swap in mock services via `AppSession.preview(...)`.
+
+    let apiClient: APIClient
+    let bulletinsService: BulletinsService
+    let meService: MeService
+    let schoolService: SchoolService
+
+    init(
+        apiClient: APIClient? = nil,
+        bulletinsService: BulletinsService? = nil,
+        meService: MeService? = nil,
+        schoolService: SchoolService? = nil
+    ) {
+        let client = apiClient ?? LiveAPIClient.shared
+        self.apiClient = client
+        self.bulletinsService = bulletinsService ?? LiveBulletinsService(apiClient: client)
+        self.meService = meService ?? LiveMeService(apiClient: client)
+        self.schoolService = schoolService ?? LiveSchoolService()
     }
 
     func bootstrap() async {
@@ -42,8 +64,7 @@ final class AppSession {
         }
 
         do {
-            let me: UserInfo = try await apiClient.get("connect/userinfo")
-            phase = .authenticated(me)
+            phase = .authenticated(try await meService.fetch())
         } catch {
             phase = .needsLogin
         }
@@ -58,8 +79,7 @@ final class AppSession {
     func signIn(presentationAnchor: ASPresentationAnchor) async throws {
         let tokens = try await OAuthService.shared.signIn(presentationAnchor: presentationAnchor)
         try TokenStore.save(tokens)
-        let me: UserInfo = try await apiClient.get("connect/userinfo")
-        phase = .authenticated(me)
+        phase = .authenticated(try await meService.fetch())
     }
 
     func signOut() {
@@ -76,13 +96,22 @@ final class AppSession {
 
     #if DEBUG
     /// Build a session pre-loaded into a specific phase, with no networking, for
-    /// SwiftUI previews. The mock client only answers paths you've explicitly stubbed.
+    /// SwiftUI previews. Override individual services to script their behaviour
+    /// (e.g. `bulletinsService: MockBulletinsService().withSummaries(...)`).
     static func preview(
         phase: Phase = .needsLogin,
         school: SchoolConfig? = .preview,
-        apiClient: APIClient = MockAPIClient()
+        apiClient: APIClient = MockAPIClient(),
+        bulletinsService: BulletinsService? = nil,
+        meService: MeService? = nil,
+        schoolService: SchoolService? = nil
     ) -> AppSession {
-        let session = AppSession(apiClient: apiClient)
+        let session = AppSession(
+            apiClient: apiClient,
+            bulletinsService: bulletinsService,
+            meService: meService,
+            schoolService: schoolService
+        )
         session.school = school
         session.phase = phase
         return session

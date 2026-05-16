@@ -1,60 +1,51 @@
 import SwiftUI
 
-/// Bulletins list. Designed to live inside a `HomeCard` — no outer ScrollView,
-/// no own background. The parent owns vertical scrolling.
+/// State of the bulletins fetch. Lives at the top level of this file so the
+/// host view (`StaffHomeView`) and this presentational view share one type.
+enum BulletinsLoadState: Equatable {
+    case idle
+    case loading
+    case loaded
+    case error(String)
+}
+
+/// Bulletins list — presentational only. Owned state (load state, items,
+/// reload action) lives in the host view; this view just renders whatever
+/// it's given. Designed to live inside a `HomeCard`.
 struct BulletinsFeedView: View {
-    @Environment(AppSession.self) private var session
-    @State private var viewModel: BulletinsViewModel?
+    let state: BulletinsLoadState
+    let bulletins: [BulletinSummary]
+    let onRetry: () -> Void
 
     var body: some View {
-        Group {
-            if let viewModel {
-                content(viewModel: viewModel)
-            } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, minHeight: 80)
-            }
-        }
-        .task {
-            if viewModel == nil {
-                viewModel = BulletinsViewModel(apiClient: session.apiClient)
-            }
-            await viewModel?.loadIfNeeded()
-        }
-    }
-
-    @ViewBuilder
-    private func content(viewModel: BulletinsViewModel) -> some View {
-        switch viewModel.state {
+        switch state {
         case .idle, .loading:
             loadingSkeleton
         case .loaded:
-            if viewModel.bulletins.isEmpty {
+            if bulletins.isEmpty {
                 emptyState
             } else {
-                list(items: viewModel.bulletins)
+                list
             }
         case .error(let message):
-            errorState(message: message) {
-                Task { await viewModel.reload() }
-            }
+            errorState(message: message)
         }
     }
 
     private var loadingSkeleton: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: Spacing.s) {
             ForEach(0..<3, id: \.self) { _ in
-                HStack(alignment: .top, spacing: 12) {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                HStack(alignment: .top, spacing: Spacing.m) {
+                    RoundedRectangle(cornerRadius: CornerRadius.s, style: .continuous)
                         .fill(Color(.tertiarySystemFill))
                         .frame(width: 36, height: 36)
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
                         RoundedRectangle(cornerRadius: 4).fill(Color(.tertiarySystemFill)).frame(height: 10).frame(maxWidth: 120, alignment: .leading)
                         RoundedRectangle(cornerRadius: 4).fill(Color(.tertiarySystemFill)).frame(height: 14).frame(maxWidth: 220, alignment: .leading)
                         RoundedRectangle(cornerRadius: 4).fill(Color(.tertiarySystemFill)).frame(height: 12)
                     }
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, Spacing.s)
             }
         }
         .redacted(reason: .placeholder)
@@ -62,7 +53,7 @@ struct BulletinsFeedView: View {
     }
 
     private var emptyState: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Spacing.m) {
             Image(systemName: "bell.slash")
                 .foregroundStyle(.secondary)
                 .font(.title3)
@@ -75,12 +66,12 @@ struct BulletinsFeedView: View {
             }
             Spacer()
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, Spacing.s)
     }
 
-    private func list(items: [BulletinSummary]) -> some View {
-        LazyVStack(spacing: 10) {
-            ForEach(items) { bulletin in
+    private var list: some View {
+        LazyVStack(spacing: Spacing.s) {
+            ForEach(bulletins) { bulletin in
                 NavigationLink(value: bulletin) {
                     BulletinRow(bulletin: bulletin)
                 }
@@ -89,9 +80,9 @@ struct BulletinsFeedView: View {
         }
     }
 
-    private func errorState(message: String, retry: @escaping () -> Void) -> some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 8) {
+    private func errorState(message: String) -> some View {
+        VStack(spacing: Spacing.s) {
+            HStack(spacing: Spacing.s) {
                 Image(systemName: "exclamationmark.triangle")
                     .foregroundStyle(.orange)
                 Text("Couldn't load bulletins")
@@ -101,70 +92,44 @@ struct BulletinsFeedView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button("Try again", action: retry)
+            Button("Try again", action: onRetry)
                 .buttonStyle(.bordered)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .padding(.vertical, Spacing.s)
     }
 }
 
 #if DEBUG
 #Preview("Loaded") {
-    NavigationStack {
-        ScrollView {
-            HomeCard(title: "Bulletins", systemImage: "bell.fill") {
-                BulletinsFeedView()
-            }
-            .padding()
-        }
-        .background(Color(.systemGroupedBackground))
-        .navigationDestination(for: BulletinSummary.self) { summary in
-            BulletinDetailView(summary: summary)
-        }
-    }
-    .environment(AppSession.preview(
-        phase: .authenticated(.previewStaff),
-        apiClient: MockAPIClient()
-            .stubbingGet("api/bulletins?page=1&pageSize=25", with: PageResult(items: BulletinSummary.previewSet, totalItems: BulletinSummary.previewSet.count))
-            .stubbingGet("api/bulletins/\(BulletinSummary.previewUrgent.id.uuidString.lowercased())", with: BulletinDetails.previewUrgent)
-            .stubbingGet("api/bulletins/\(BulletinSummary.previewAcknowledged.id.uuidString.lowercased())", with: BulletinDetails.previewAcknowledged)
-            .stubbingGet("api/bulletins/\(BulletinSummary.previewExpired.id.uuidString.lowercased())", with: BulletinDetails.previewExpired)
-    ))
+    BulletinsFeedView(
+        state: .loaded,
+        bulletins: BulletinSummary.previewSet,
+        onRetry: {}
+    )
+    .padding()
+    .background(Color(.systemGroupedBackground))
 }
 
 #Preview("Empty") {
-    NavigationStack {
-        ScrollView {
-            HomeCard(title: "Bulletins", systemImage: "bell.fill") {
-                BulletinsFeedView()
-            }
-            .padding()
-        }
+    BulletinsFeedView(state: .loaded, bulletins: [], onRetry: {})
+        .padding()
         .background(Color(.systemGroupedBackground))
-    }
-    .environment(AppSession.preview(
-        phase: .authenticated(.previewStaff),
-        apiClient: MockAPIClient().stubbingGet(
-            "api/bulletins?page=1&pageSize=25",
-            with: PageResult<BulletinSummary>(items: [], totalItems: 0)
-        )
-    ))
+}
+
+#Preview("Loading") {
+    BulletinsFeedView(state: .loading, bulletins: [], onRetry: {})
+        .padding()
+        .background(Color(.systemGroupedBackground))
 }
 
 #Preview("Error") {
-    NavigationStack {
-        ScrollView {
-            HomeCard(title: "Bulletins", systemImage: "bell.fill") {
-                BulletinsFeedView()
-            }
-            .padding()
-        }
-        .background(Color(.systemGroupedBackground))
-    }
-    .environment(AppSession.preview(
-        phase: .authenticated(.previewStaff),
-        apiClient: MockAPIClient()
-    ))
+    BulletinsFeedView(
+        state: .error("The server returned a 500."),
+        bulletins: [],
+        onRetry: {}
+    )
+    .padding()
+    .background(Color(.systemGroupedBackground))
 }
 #endif

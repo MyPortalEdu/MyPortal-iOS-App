@@ -22,8 +22,8 @@ struct HomeCard<Content: View, Trailing: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: Spacing.m) {
+            HStack(spacing: Spacing.s) {
                 if let systemImage {
                     Image(systemName: systemImage)
                         .foregroundStyle(.tint)
@@ -31,17 +31,14 @@ struct HomeCard<Content: View, Trailing: View>: View {
                 }
                 Text(title)
                     .font(.headline)
-                Spacer(minLength: 4)
+                Spacer(minLength: Spacing.xs)
                 trailing()
             }
             content()
         }
-        .padding(16)
+        .padding(Spacing.l)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(.secondarySystemGroupedBackground))
-        )
+        .cardSurface()
     }
 }
 

@@ -2,20 +2,47 @@ import SwiftUI
 
 struct BulletinDetailView: View {
     let summary: BulletinSummary
+    /// Called whenever the bulletin's state changes (acknowledge / edit / delete)
+    /// so the parent feed can refetch.
+    let onChanged: () -> Void
+
     @Environment(AppSession.self) private var session
-    @State private var viewModel: BulletinDetailViewModel?
+    @Environment(\.dismiss) private var dismiss
+
+    // Detail screen state lives directly on the view per Apple's MV pattern:
+    // ephemeral UI state belongs to the view that owns the screen, not a
+    // separate "ViewModel" type.
+    @State private var details: BulletinDetails?
+    @State private var loadState: LoadState = .idle
+    @State private var ackInFlight = false
+    @State private var ackError: String?
+    @State private var deleteInFlight = false
+    @State private var deleteError: String?
+    @State private var showingEditForm = false
+    @State private var showingDeleteConfirm = false
+
+    enum LoadState: Equatable {
+        case idle, loading, loaded
+        case error(String)
+    }
+
+    init(summary: BulletinSummary, onChanged: @escaping () -> Void = {}) {
+        self.summary = summary
+        self.onChanged = onChanged
+    }
 
     private var categoryColor: Color { Color(hex: summary.categoryColourCode) }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: Spacing.xl) {
                 header
                 Divider()
                 bodyText
                 acknowledgeBlock
                 audienceBlock
                 attachmentsBlock
+                deleteErrorBanner
                 auditFooter
             }
             .padding()
@@ -23,22 +50,137 @@ struct BulletinDetailView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Bulletin")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            if viewModel == nil {
-                viewModel = BulletinDetailViewModel(bulletinId: summary.id, apiClient: session.apiClient)
+        .toolbar { toolbarContent }
+        .task { await loadIfNeeded() }
+        .refreshable { await load() }
+        .sheet(isPresented: $showingEditForm) {
+            if let details {
+                BulletinFormView(
+                    mode: .edit(id: details.id, version: details.version),
+                    service: session.bulletinsService,
+                    prefill: details
+                ) { _ in
+                    Task {
+                        await load()
+                        onChanged()
+                    }
+                }
+                .environment(session)
             }
-            await viewModel?.loadIfNeeded()
         }
-        .refreshable { await viewModel?.reload() }
+        .alert("Delete bulletin?", isPresented: $showingDeleteConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                Task {
+                    if await performDelete() {
+                        onChanged()
+                        dismiss()
+                    }
+                }
+            }
+        } message: {
+            Text("Are you sure you want to delete this bulletin?")
+        }
+    }
+
+    // MARK: - Actions
+
+    private func loadIfNeeded() async {
+        guard loadState == .idle else { return }
+        await load()
+    }
+
+    private func load() async {
+        loadState = .loading
+        do {
+            details = try await session.bulletinsService.details(id: summary.id)
+            loadState = .loaded
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            loadState = .error(message)
+        }
+    }
+
+    private func acknowledge() async {
+        guard let current = details, !ackInFlight else { return }
+        ackInFlight = true
+        ackError = nil
+        defer { ackInFlight = false }
+        do {
+            try await session.bulletinsService.acknowledge(id: current.id)
+            details = current.withAcknowledged()
+        } catch {
+            ackError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    private func performDelete() async -> Bool {
+        guard !deleteInFlight else { return false }
+        deleteInFlight = true
+        deleteError = nil
+        defer { deleteInFlight = false }
+        do {
+            try await session.bulletinsService.delete(id: summary.id)
+            return true
+        } catch {
+            deleteError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return false
+        }
+    }
+
+    // MARK: - Toolbar / banners
+
+    /// True once details have loaded AND the current user is allowed to edit
+    /// or delete this bulletin. We don't show the menu before details land
+    /// because the policy needs `createdById` to evaluate ownership.
+    private var canEdit: Bool {
+        guard let details else { return false }
+        return BulletinAccessPolicy.canEdit(bulletin: details, me: session.me)
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        if canEdit {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        showingEditForm = true
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                    }
+
+                    Button(role: .destructive) {
+                        showingDeleteConfirm = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .disabled(deleteInFlight)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var deleteErrorBanner: some View {
+        if let deleteError {
+            HStack(alignment: .top, spacing: Spacing.s) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text(deleteError).font(.footnote)
+            }
+            .padding(Spacing.m)
+            .cardSurface(cornerRadius: CornerRadius.m, background: Color.orange.opacity(0.12))
+        }
     }
 
     // MARK: - Sections
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: Spacing.m) {
+            HStack(spacing: Spacing.m) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: CornerRadius.m, style: .continuous)
                         .fill(categoryColor.opacity(0.15))
                     Image(systemName: FontAwesomeMapping.sfSymbol(for: summary.categoryIcon))
                         .foregroundStyle(categoryColor)
@@ -46,7 +188,7 @@ struct BulletinDetailView: View {
                 }
                 .frame(width: 48, height: 48)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: Spacing.xs) {
                     Text(summary.categoryName.uppercased())
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(categoryColor)
@@ -56,7 +198,7 @@ struct BulletinDetailView: View {
                 }
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: Spacing.s) {
                 Image(systemName: "person.crop.circle")
                     .foregroundStyle(.secondary)
                 Text(summary.createdByName)
@@ -68,7 +210,7 @@ struct BulletinDetailView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                Spacer(minLength: 4)
+                Spacer(minLength: Spacing.xs)
                 if summary.isPinned {
                     Label("Pinned", systemImage: "bookmark.fill")
                         .labelStyle(.iconOnly)
@@ -79,8 +221,8 @@ struct BulletinDetailView: View {
             if summary.isExpired {
                 Label("This bulletin has expired", systemImage: "clock")
                     .font(.footnote.weight(.medium))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, Spacing.m)
+                    .padding(.vertical, Spacing.xs)
                     .background(Capsule().fill(Color(.tertiarySystemFill)))
                     .foregroundStyle(.secondary)
             }
@@ -88,7 +230,7 @@ struct BulletinDetailView: View {
     }
 
     private var bodyText: some View {
-        Text((viewModel?.details?.detail) ?? summary.detail)
+        Text(details?.detail ?? summary.detail)
             .font(.body)
             .foregroundStyle(.primary)
             .fixedSize(horizontal: false, vertical: true)
@@ -97,16 +239,23 @@ struct BulletinDetailView: View {
     @ViewBuilder
     private var acknowledgeBlock: some View {
         if summary.requiresAcknowledgement {
-            let details = viewModel?.details
             let acknowledged = details?.hasAcknowledged ?? summary.hasAcknowledged ?? false
             let count = details?.acknowledgedCount
 
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: Spacing.s) {
+                HStack(spacing: Spacing.s) {
                     Image(systemName: acknowledged ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                         .foregroundStyle(acknowledged ? .green : .orange)
-                    Text(acknowledged ? "You've acknowledged this bulletin." : "Please confirm you've read this bulletin.")
-                        .font(.subheadline)
+                    // Split branches so each string is a static LocalizedStringKey
+                    // the String Catalog can extract — a ternary inside Text(_:)
+                    // would collapse to a runtime `String` and bypass localisation.
+                    if acknowledged {
+                        Text("You've acknowledged this bulletin.")
+                            .font(.subheadline)
+                    } else {
+                        Text("Please confirm you've read this bulletin.")
+                            .font(.subheadline)
+                    }
                 }
 
                 if let count {
@@ -117,10 +266,10 @@ struct BulletinDetailView: View {
 
                 if !acknowledged {
                     Button {
-                        Task { await viewModel?.acknowledge() }
+                        Task { await acknowledge() }
                     } label: {
                         HStack {
-                            if viewModel?.acknowledgementInFlight == true {
+                            if ackInFlight {
                                 ProgressView().tint(.white)
                             }
                             Text("Acknowledge")
@@ -129,45 +278,42 @@ struct BulletinDetailView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .disabled(viewModel?.acknowledgementInFlight == true)
+                    .disabled(ackInFlight)
                 }
 
-                if let error = viewModel?.acknowledgementError {
-                    Text(error)
+                if let ackError {
+                    Text(ackError)
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
             }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color(.secondarySystemGroupedBackground))
-            )
+            .padding(Spacing.m + Spacing.xs)
+            .cardSurface(cornerRadius: CornerRadius.m)
         }
     }
 
     @ViewBuilder
     private var audienceBlock: some View {
-        if let details = viewModel?.details, !details.audiences.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
+        if let details, !details.audiences.isEmpty {
+            VStack(alignment: .leading, spacing: Spacing.s) {
                 Text("Audience")
                     .font(.headline)
-                FlowLayout(spacing: 8) {
+                FlowLayout(spacing: Spacing.s) {
                     ForEach(details.audiences) { audience in
                         Text(audience.displayName)
                             .font(.caption.weight(.medium))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
+                            .padding(.horizontal, Spacing.m)
+                            .padding(.vertical, Spacing.xs)
                             .background(Capsule().fill(Color(.tertiarySystemFill)))
                             .foregroundStyle(.primary)
                     }
                 }
             }
-        } else if viewModel?.state == .loading {
-            VStack(alignment: .leading, spacing: 8) {
+        } else if loadState == .loading {
+            VStack(alignment: .leading, spacing: Spacing.s) {
                 Text("Audience")
                     .font(.headline)
-                HStack(spacing: 8) {
+                HStack(spacing: Spacing.s) {
                     Capsule().fill(Color(.tertiarySystemFill)).frame(width: 80, height: 24)
                     Capsule().fill(Color(.tertiarySystemFill)).frame(width: 110, height: 24)
                 }
@@ -181,23 +327,23 @@ struct BulletinDetailView: View {
         if summary.attachmentCount > 0 {
             HStack {
                 Image(systemName: "paperclip")
-                Text("\(summary.attachmentCount) attachment\(summary.attachmentCount == 1 ? "" : "s")")
+                // Catalog can hold a plural variation for this key ("%lld
+                // attachments") via Xcode's editor — the literal stays a
+                // LocalizedStringKey so it gets extracted.
+                Text("\(summary.attachmentCount) attachments")
                 Spacer()
                 Text("Coming soon")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color(.secondarySystemGroupedBackground))
-            )
+            .padding(Spacing.m + Spacing.xs)
+            .cardSurface(cornerRadius: CornerRadius.m)
         }
     }
 
     @ViewBuilder
     private var auditFooter: some View {
-        if let details = viewModel?.details {
+        if let details {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Last updated \(RelativeTime.string(for: details.lastModifiedAt)) by \(details.lastModifiedByName)")
             }
@@ -207,10 +353,39 @@ struct BulletinDetailView: View {
     }
 }
 
+private extension BulletinDetails {
+    func withAcknowledged() -> BulletinDetails {
+        BulletinDetails(
+            id: id,
+            directoryId: directoryId,
+            expiresAt: expiresAt,
+            pinnedAt: pinnedAt,
+            title: title,
+            detail: detail,
+            requiresAcknowledgement: requiresAcknowledgement,
+            categoryId: categoryId,
+            categoryName: categoryName,
+            categoryIcon: categoryIcon,
+            categoryColourCode: categoryColourCode,
+            createdById: createdById,
+            createdByName: createdByName,
+            createdAt: createdAt,
+            lastModifiedById: lastModifiedById,
+            lastModifiedByName: lastModifiedByName,
+            lastModifiedAt: lastModifiedAt,
+            version: version,
+            audiences: audiences,
+            hasAcknowledged: true,
+            acknowledgedCount: (acknowledgedCount ?? 0) + 1,
+            attachmentCount: attachmentCount
+        )
+    }
+}
+
 /// Wrap-around horizontal stack used for the audience chip row. SwiftUI's
 /// built-in `HStack` would just push everything onto one line and clip.
 private struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
+    var spacing: CGFloat = Spacing.s
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxWidth = proposal.width ?? .infinity
@@ -258,9 +433,7 @@ private struct FlowLayout: Layout {
     }
     .environment(AppSession.preview(
         phase: .authenticated(.previewStaff),
-        apiClient: MockAPIClient()
-            .stubbingGet("api/bulletins/\(BulletinSummary.previewUrgent.id.uuidString.lowercased())", with: BulletinDetails.previewUrgent)
-            .stubbingPost("api/bulletins/\(BulletinSummary.previewUrgent.id.uuidString.lowercased())/acknowledge", with: EmptyResponseStub())
+        bulletinsService: MockBulletinsService().withDetails(.previewUrgent)
     ))
 }
 
@@ -270,8 +443,7 @@ private struct FlowLayout: Layout {
     }
     .environment(AppSession.preview(
         phase: .authenticated(.previewStaff),
-        apiClient: MockAPIClient()
-            .stubbingGet("api/bulletins/\(BulletinSummary.previewAcknowledged.id.uuidString.lowercased())", with: BulletinDetails.previewAcknowledged)
+        bulletinsService: MockBulletinsService().withDetails(.previewAcknowledged)
     ))
 }
 
@@ -281,13 +453,7 @@ private struct FlowLayout: Layout {
     }
     .environment(AppSession.preview(
         phase: .authenticated(.previewStaff),
-        apiClient: MockAPIClient()
-            .stubbingGet("api/bulletins/\(BulletinSummary.previewExpired.id.uuidString.lowercased())", with: BulletinDetails.previewExpired)
+        bulletinsService: MockBulletinsService().withDetails(.previewExpired)
     ))
 }
-
-/// EmptyResponse can't be auto-encoded — it has no stored properties and is
-/// only used as a "I don't care about the body" marker. Encode any small JSON
-/// object as a stand-in for stubbing 204-style endpoints.
-private struct EmptyResponseStub: Encodable {}
 #endif

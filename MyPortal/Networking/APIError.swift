@@ -10,14 +10,21 @@ enum APIError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidURL: return "The URL is not valid."
-        case .missingSchoolConfig: return "No school is configured."
-        case .notAuthenticated: return "You're signed out."
+        case .invalidURL:
+            return String(localized: "The URL is not valid.")
+        case .missingSchoolConfig:
+            return String(localized: "No school is configured.")
+        case .notAuthenticated:
+            return String(localized: "You're signed out.")
         case .http(let status, let body):
-            if let body, !body.isEmpty { return "Server error \(status): \(body)" }
-            return "Server error \(status)."
-        case .decoding(let err): return "Couldn't read the response (\(err.localizedDescription))."
-        case .transport(let err): return err.localizedDescription
+            if let body, !body.isEmpty {
+                return String(localized: "Server error \(status): \(body)")
+            }
+            return String(localized: "Server error \(status).")
+        case .decoding(let err):
+            return String(localized: "Couldn't read the response (\(err.localizedDescription)).")
+        case .transport(let err):
+            return err.localizedDescription
         }
     }
 }

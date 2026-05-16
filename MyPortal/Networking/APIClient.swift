@@ -6,6 +6,8 @@ import Foundation
 protocol APIClient: Sendable {
     func get<T: Decodable & Sendable>(_ path: String, authenticated: Bool) async throws -> T
     func post<T: Decodable & Sendable>(_ path: String, body: Data?, contentType: String, authenticated: Bool) async throws -> T
+    func put<T: Decodable & Sendable>(_ path: String, body: Data?, contentType: String, authenticated: Bool) async throws -> T
+    func delete<T: Decodable & Sendable>(_ path: String, authenticated: Bool) async throws -> T
 }
 
 extension APIClient {
@@ -15,6 +17,14 @@ extension APIClient {
 
     func post<T: Decodable & Sendable>(_ path: String, body: Data?, contentType: String = "application/json") async throws -> T {
         try await post(path, body: body, contentType: contentType, authenticated: true)
+    }
+
+    func put<T: Decodable & Sendable>(_ path: String, body: Data?, contentType: String = "application/json") async throws -> T {
+        try await put(path, body: body, contentType: contentType, authenticated: true)
+    }
+
+    func delete<T: Decodable & Sendable>(_ path: String) async throws -> T {
+        try await delete(path, authenticated: true)
     }
 }
 

@@ -165,13 +165,13 @@ struct SchoolSetupView: View {
 
     private func check() {
         guard let url = normaliseURL(urlText) else {
-            status = .error("That doesn't look like a valid URL.")
+            status = .error(String(localized: "That doesn't look like a valid URL."))
             return
         }
         status = .checking
         Task {
             do {
-                let name = try await fetchSchoolName(from: url)
+                let name = try await session.schoolService.name(at: url)
                 status = .found(SchoolConfig(baseURL: url, name: name))
             } catch {
                 status = .error((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
@@ -188,26 +188,6 @@ struct SchoolSetupView: View {
         if !trimmed.hasSuffix("/") { trimmed += "/" }
         guard let url = URL(string: trimmed), url.host != nil else { return nil }
         return url
-    }
-
-    private func fetchSchoolName(from base: URL) async throws -> String {
-        guard let url = URL(string: "api/schools/local/name", relativeTo: base) else {
-            throw APIError.invalidURL
-        }
-        var req = URLRequest(url: url)
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse else {
-            throw APIError.transport(URLError(.badServerResponse))
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw APIError.http(status: http.statusCode, body: String(data: data, encoding: .utf8))
-        }
-        let raw = String(data: data, encoding: .utf8) ?? ""
-        if let decoded = try? JSONDecoder().decode(String.self, from: data) {
-            return decoded
-        }
-        return raw
     }
 }
 

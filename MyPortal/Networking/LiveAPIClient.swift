@@ -25,6 +25,14 @@ actor LiveAPIClient: APIClient {
         try await send(path: path, method: "POST", body: body, contentType: contentType, authenticated: authenticated)
     }
 
+    func put<T: Decodable & Sendable>(_ path: String, body: Data?, contentType: String, authenticated: Bool) async throws -> T {
+        try await send(path: path, method: "PUT", body: body, contentType: contentType, authenticated: authenticated)
+    }
+
+    func delete<T: Decodable & Sendable>(_ path: String, authenticated: Bool) async throws -> T {
+        try await send(path: path, method: "DELETE", body: nil, authenticated: authenticated)
+    }
+
     private func send<T: Decodable & Sendable>(
         path: String,
         method: String,

@@ -93,7 +93,7 @@ struct LoginView: View {
             defer { isSigningIn = false }
             do {
                 guard let anchor = Self.keyWindow() else {
-                    errorMessage = "Couldn't find a window to present sign in."
+                    errorMessage = String(localized: "Couldn't find a window to present sign in.")
                     return
                 }
                 try await session.signIn(presentationAnchor: anchor)
