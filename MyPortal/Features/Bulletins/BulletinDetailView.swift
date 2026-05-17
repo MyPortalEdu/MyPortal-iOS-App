@@ -31,7 +31,15 @@ struct BulletinDetailView: View {
         self.onChanged = onChanged
     }
 
-    private var categoryColor: Color { Color(hex: summary.categoryColourCode) }
+    /// The most up-to-date snapshot of the bulletin for rendering. Falls back
+    /// to the navigation-supplied `summary` until details land, then prefers
+    /// `details` (so edits made via the form sheet show up immediately on
+    /// return).
+    private var current: BulletinSummary {
+        details.map(BulletinSummary.init(from:)) ?? summary
+    }
+
+    private var categoryColor: Color { Color(hex: current.categoryColourCode) }
 
     var body: some View {
         ScrollView {
@@ -182,17 +190,17 @@ struct BulletinDetailView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: CornerRadius.m, style: .continuous)
                         .fill(categoryColor.opacity(0.15))
-                    Image(systemName: FontAwesomeMapping.sfSymbol(for: summary.categoryIcon))
+                    Image(systemName: FontAwesomeMapping.sfSymbol(for: current.categoryIcon))
                         .foregroundStyle(categoryColor)
                         .font(.title3.weight(.semibold))
                 }
                 .frame(width: 48, height: 48)
 
                 VStack(alignment: .leading, spacing: Spacing.xs) {
-                    Text(summary.categoryName.uppercased())
+                    Text(current.categoryName.uppercased())
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(categoryColor)
-                    Text(summary.title)
+                    Text(current.title)
                         .font(.title2.bold())
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -201,24 +209,24 @@ struct BulletinDetailView: View {
             HStack(spacing: Spacing.s) {
                 Image(systemName: "person.crop.circle")
                     .foregroundStyle(.secondary)
-                Text(summary.createdByName)
+                Text(current.createdByName)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                if let createdAt = summary.createdAt {
+                if let createdAt = current.createdAt {
                     Text("·").foregroundStyle(.secondary)
                     Text(RelativeTime.string(for: createdAt))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: Spacing.xs)
-                if summary.isPinned {
+                if current.isPinned {
                     Label("Pinned", systemImage: "bookmark.fill")
                         .labelStyle(.iconOnly)
                         .foregroundStyle(.tint)
                 }
             }
 
-            if summary.isExpired {
+            if current.isExpired {
                 Label("This bulletin has expired", systemImage: "clock")
                     .font(.footnote.weight(.medium))
                     .padding(.horizontal, Spacing.m)
@@ -230,7 +238,7 @@ struct BulletinDetailView: View {
     }
 
     private var bodyText: some View {
-        Text(details?.detail ?? summary.detail)
+        Text(current.detail)
             .font(.body)
             .foregroundStyle(.primary)
             .fixedSize(horizontal: false, vertical: true)
@@ -238,8 +246,8 @@ struct BulletinDetailView: View {
 
     @ViewBuilder
     private var acknowledgeBlock: some View {
-        if summary.requiresAcknowledgement {
-            let acknowledged = details?.hasAcknowledged ?? summary.hasAcknowledged ?? false
+        if current.requiresAcknowledgement {
+            let acknowledged = current.hasAcknowledged ?? false
             let count = details?.acknowledgedCount
 
             VStack(alignment: .leading, spacing: Spacing.s) {
@@ -324,13 +332,13 @@ struct BulletinDetailView: View {
 
     @ViewBuilder
     private var attachmentsBlock: some View {
-        if summary.attachmentCount > 0 {
+        if current.attachmentCount > 0 {
             HStack {
                 Image(systemName: "paperclip")
                 // Catalog can hold a plural variation for this key ("%lld
                 // attachments") via Xcode's editor — the literal stays a
                 // LocalizedStringKey so it gets extracted.
-                Text("\(summary.attachmentCount) attachments")
+                Text("\(current.attachmentCount) attachments")
                 Spacer()
                 Text("Coming soon")
                     .font(.caption)

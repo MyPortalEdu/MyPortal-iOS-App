@@ -95,7 +95,9 @@ final class OAuthService: NSObject {
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         req.httpBody = Self.formEncode(params).data(using: .utf8)
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        // Per-task dev-cert trust in DEBUG so token exchange / refresh works
+        // against the ASP.NET self-signed cert on localhost.
+        let (data, response) = try await URLSession.shared.dataAllowingDevCert(for: req)
         guard let http = response as? HTTPURLResponse else {
             throw OAuthError.tokenExchange("No response.")
         }

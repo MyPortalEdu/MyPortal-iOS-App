@@ -21,7 +21,7 @@ nonisolated struct LiveSchoolService: SchoolService {
         }
         var req = URLRequest(url: url)
         req.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await session.dataAllowingDevCert(for: req)
         guard let http = response as? HTTPURLResponse else {
             throw APIError.transport(URLError(.badServerResponse))
         }

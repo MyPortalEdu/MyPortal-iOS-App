@@ -4,6 +4,10 @@ actor LiveAPIClient: APIClient {
     /// Process-wide singleton. MainActor-isolated so its initializer runs in
     /// a known isolation context — callers reach it via the default arg on
     /// `AppSession.init`, which is also MainActor.
+    ///
+    /// Dev-cert trust is handled per-task by `URLSession.dataAllowingDevCert`
+    /// (see DevTrustingSession.swift), so this can safely use the shared
+    /// system session.
     @MainActor static let shared = LiveAPIClient(session: .shared)
 
     private let session: URLSession
@@ -86,8 +90,13 @@ actor LiveAPIClient: APIClient {
     private func perform(request: URLRequest, authenticated: Bool) async throws -> (Data, URLResponse) {
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.dataAllowingDevCert(for: request)
         } catch {
+            #if DEBUG
+            // Useful when something does go wrong — generic "transport"
+            // errors are hard to triage without the underlying URLError code.
+            print("[LiveAPIClient] \(request.url?.absoluteString ?? "?") failed: \(error)")
+            #endif
             throw APIError.transport(error)
         }
 
@@ -105,7 +114,7 @@ actor LiveAPIClient: APIClient {
         var retry = request
         retry.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
         do {
-            return try await session.data(for: retry)
+            return try await session.dataAllowingDevCert(for: retry)
         } catch {
             throw APIError.transport(error)
         }

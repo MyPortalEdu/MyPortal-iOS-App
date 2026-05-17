@@ -46,6 +46,10 @@ private struct StaffHomeView: View {
                 .padding()
             }
             .background(Color(.systemGroupedBackground))
+            // Force the ScrollView to always bounce so pull-to-refresh works
+            // even when the content (e.g. just an error card) doesn't overflow
+            // the viewport.
+            .scrollBounceBehavior(.always)
             .navigationTitle(session.school?.name.isEmpty == false ? session.school!.name : "Home")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: BulletinSummary.self) { summary in
@@ -62,10 +66,13 @@ private struct StaffHomeView: View {
                 }
                 .environment(session)
             }
-            .task {
-                if bulletinsState == .idle {
-                    await reloadBulletins()
-                }
+            .onAppear {
+                // `.task` ties the load to view lifetime — SwiftUI cancels it
+                // if the view briefly unmounts (which can happen inside a
+                // TabView), surfacing as URLError.cancelled. A self-managed
+                // Task isn't tied to the view, so it runs to completion.
+                guard bulletinsState == .idle else { return }
+                Task { await reloadBulletins() }
             }
             .refreshable { await reloadBulletins() }
         }

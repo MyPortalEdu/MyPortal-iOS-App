@@ -101,6 +101,30 @@ extension BulletinDetails {
     var isPinned: Bool { pinnedAt != nil }
 }
 
+nonisolated extension BulletinSummary {
+    /// Build a summary from a freshly-loaded `BulletinDetails`. Useful when a
+    /// view holds onto a summary (the row tapped to navigate in) but wants to
+    /// refresh its rendering once details land.
+    init(from details: BulletinDetails) {
+        self.init(
+            id: details.id,
+            expiresAt: details.expiresAt,
+            pinnedAt: details.pinnedAt,
+            title: details.title,
+            detail: details.detail,
+            createdByName: details.createdByName,
+            createdAt: details.createdAt,
+            categoryId: details.categoryId,
+            categoryName: details.categoryName,
+            categoryIcon: details.categoryIcon,
+            categoryColourCode: details.categoryColourCode,
+            requiresAcknowledgement: details.requiresAcknowledgement,
+            hasAcknowledged: details.hasAcknowledged,
+            attachmentCount: details.attachmentCount
+        )
+    }
+}
+
 // MARK: - Upsert request shapes
 
 nonisolated struct BulletinAudienceRequest: Codable, Equatable, Sendable {
