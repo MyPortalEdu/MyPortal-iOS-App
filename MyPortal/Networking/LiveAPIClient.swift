@@ -55,6 +55,11 @@ actor LiveAPIClient: APIClient {
         if T.self == EmptyResponse.self {
             return EmptyResponse() as! T
         }
+        // Binary endpoints (e.g. document download) return raw bytes; skip
+        // JSON decoding when the caller asks for `Data` directly.
+        if T.self == Data.self {
+            return data as! T
+        }
         do {
             return try decoder.decode(T.self, from: data)
         } catch {

@@ -14,6 +14,15 @@ protocol BulletinsService: Sendable {
     func delete(id: UUID) async throws
     func acknowledge(id: UUID) async throws
     func categories(includeInactive: Bool) async throws -> [BulletinCategory]
+
+    /// Attachments live under `…/attachments/directories/{directoryId}/contents`
+    /// keyed by the bulletin's `directoryId`. Returns documents only — we
+    /// don't navigate nested directories on iOS.
+    func attachments(bulletinId: UUID, directoryId: UUID) async throws -> [DocumentSummary]
+
+    /// Returns the data for a single attachment. The caller can write it to
+    /// a temp file and hand it to QLPreviewController / a share sheet.
+    func downloadAttachment(bulletinId: UUID, documentId: UUID) async throws -> Data
 }
 
 extension BulletinsService {

@@ -17,12 +17,21 @@ private struct StaffHomeView: View {
     @Environment(AppSession.self) private var session
     @State private var bulletinsState: BulletinsLoadState = .idle
     @State private var bulletins: [BulletinSummary] = []
+    @State private var timetableState: TimetableLoadState = .idle
+    @State private var timetable: [TimetableEntry] = []
     @State private var showingForm = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: Spacing.l) {
+                    HomeCard(title: "Today", systemImage: "calendar") {
+                        TimetableFeedView(
+                            state: timetableState,
+                            entries: timetable,
+                            onRetry: { Task { await reloadTimetable() } }
+                        )
+                    }
                     HomeCard(title: "Bulletins", systemImage: "bell.fill") {
                         BulletinsFeedView(
                             state: bulletinsState,
@@ -40,8 +49,6 @@ private struct StaffHomeView: View {
                             .accessibilityLabel("New bulletin")
                         }
                     }
-                    // Future cards (timetable, attendance, etc.) slot in here
-                    // — same HomeCard wrapper, content is the only variable.
                 }
                 .padding()
             }
@@ -71,10 +78,14 @@ private struct StaffHomeView: View {
                 // if the view briefly unmounts (which can happen inside a
                 // TabView), surfacing as URLError.cancelled. A self-managed
                 // Task isn't tied to the view, so it runs to completion.
-                guard bulletinsState == .idle else { return }
-                Task { await reloadBulletins() }
+                if bulletinsState == .idle { Task { await reloadBulletins() } }
+                if timetableState == .idle { Task { await reloadTimetable() } }
             }
-            .refreshable { await reloadBulletins() }
+            .refreshable {
+                async let b: Void = reloadBulletins()
+                async let t: Void = reloadTimetable()
+                _ = await (b, t)
+            }
         }
     }
 
@@ -87,6 +98,18 @@ private struct StaffHomeView: View {
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             bulletinsState = .error(message)
+        }
+    }
+
+    private func reloadTimetable() async {
+        timetableState = .loading
+        do {
+            let entries = try await session.timetableService.sessions(on: Date())
+            timetable = entries.sorted { $0.startTime < $1.startTime }
+            timetableState = .loaded
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            timetableState = .error(message)
         }
     }
 
@@ -134,7 +157,8 @@ private enum PreviewStubs {
     StaffPortalView()
         .environment(AppSession.preview(
             phase: .authenticated(.previewStaff),
-            bulletinsService: PreviewStubs.service(items: BulletinSummary.previewSet)
+            bulletinsService: PreviewStubs.service(items: BulletinSummary.previewSet),
+            timetableService: MockTimetableService().withEntries(TimetableEntry.previewToday)
         ))
 }
 
@@ -142,7 +166,8 @@ private enum PreviewStubs {
     StaffPortalView()
         .environment(AppSession.preview(
             phase: .authenticated(.previewStaff),
-            bulletinsService: PreviewStubs.service(items: [])
+            bulletinsService: PreviewStubs.service(items: []),
+            timetableService: MockTimetableService()
         ))
 }
 #endif

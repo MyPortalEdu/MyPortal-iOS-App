@@ -6,6 +6,8 @@ nonisolated struct MockBulletinsService: BulletinsService {
     var summaries: [BulletinSummary] = []
     var detailsByID: [UUID: BulletinDetails] = [:]
     var categoryList: [BulletinCategory] = []
+    var attachmentsByBulletin: [UUID: [DocumentSummary]] = [:]
+    var documentBytes: [UUID: Data] = [:]
     /// If set, every method throws this instead of returning data — useful for
     /// previewing error states.
     var error: APIError?
@@ -24,6 +26,14 @@ nonisolated struct MockBulletinsService: BulletinsService {
 
     func withCategories(_ items: [BulletinCategory]) -> Self {
         var copy = self; copy.categoryList = items; return copy
+    }
+
+    func withAttachments(_ items: [DocumentSummary], for bulletinId: UUID) -> Self {
+        var copy = self; copy.attachmentsByBulletin[bulletinId] = items; return copy
+    }
+
+    func withDocumentBytes(_ data: Data, for documentId: UUID) -> Self {
+        var copy = self; copy.documentBytes[documentId] = data; return copy
     }
 
     func failing(with error: APIError) -> Self {
@@ -57,6 +67,19 @@ nonisolated struct MockBulletinsService: BulletinsService {
     func categories(includeInactive: Bool) async throws -> [BulletinCategory] {
         try check()
         return categoryList
+    }
+
+    func attachments(bulletinId: UUID, directoryId: UUID) async throws -> [DocumentSummary] {
+        try check()
+        return attachmentsByBulletin[bulletinId] ?? []
+    }
+
+    func downloadAttachment(bulletinId: UUID, documentId: UUID) async throws -> Data {
+        try check()
+        guard let data = documentBytes[documentId] else {
+            throw APIError.http(status: 404, body: "MockBulletinsService: no bytes for \(documentId)")
+        }
+        return data
     }
 
     private func check() throws {

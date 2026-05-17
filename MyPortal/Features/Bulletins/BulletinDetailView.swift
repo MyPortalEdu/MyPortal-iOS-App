@@ -21,6 +21,12 @@ struct BulletinDetailView: View {
     @State private var showingEditForm = false
     @State private var showingDeleteConfirm = false
 
+    // Attachments
+    @State private var attachments: [DocumentSummary] = []
+    @State private var attachmentDownloading: UUID?
+    @State private var attachmentError: String?
+    @State private var previewing: PreviewableFile?
+
     enum LoadState: Equatable {
         case idle, loading, loaded
         case error(String)
@@ -76,6 +82,10 @@ struct BulletinDetailView: View {
                 .environment(session)
             }
         }
+        .sheet(item: $previewing) { file in
+            QuickLookPreview(url: file.url)
+                .ignoresSafeArea()
+        }
         .alert("Delete bulletin?", isPresented: $showingDeleteConfirm) {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) {
@@ -101,11 +111,49 @@ struct BulletinDetailView: View {
     private func load() async {
         loadState = .loading
         do {
-            details = try await session.bulletinsService.details(id: summary.id)
+            let loaded = try await session.bulletinsService.details(id: summary.id)
+            details = loaded
             loadState = .loaded
+            await loadAttachmentsIfAny(for: loaded)
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             loadState = .error(message)
+        }
+    }
+
+    private func loadAttachmentsIfAny(for details: BulletinDetails) async {
+        guard details.attachmentCount > 0 else {
+            attachments = []
+            return
+        }
+        do {
+            attachments = try await session.bulletinsService.attachments(
+                bulletinId: details.id,
+                directoryId: details.directoryId
+            )
+        } catch {
+            // Surface inline in the attachments section instead of failing
+            // the whole detail screen — body content is still useful even if
+            // attachments can't be listed.
+            attachmentError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    private func download(_ document: DocumentSummary) async {
+        attachmentDownloading = document.id
+        attachmentError = nil
+        defer { attachmentDownloading = nil }
+        do {
+            let data = try await session.bulletinsService.downloadAttachment(
+                bulletinId: summary.id,
+                documentId: document.id
+            )
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent(document.fileName)
+            try data.write(to: url, options: .atomic)
+            previewing = PreviewableFile(url: url)
+        } catch {
+            attachmentError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 
@@ -333,20 +381,101 @@ struct BulletinDetailView: View {
     @ViewBuilder
     private var attachmentsBlock: some View {
         if current.attachmentCount > 0 {
-            HStack {
-                Image(systemName: "paperclip")
-                // Catalog can hold a plural variation for this key ("%lld
-                // attachments") via Xcode's editor — the literal stays a
-                // LocalizedStringKey so it gets extracted.
-                Text("\(current.attachmentCount) attachments")
-                Spacer()
-                Text("Coming soon")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: Spacing.s) {
+                HStack(spacing: Spacing.s) {
+                    Image(systemName: "paperclip")
+                    Text("\(current.attachmentCount) attachments")
+                        .font(.headline)
+                }
+
+                if let attachmentError {
+                    Text(attachmentError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+
+                if attachments.isEmpty && loadState == .loading {
+                    HStack(spacing: Spacing.s) {
+                        ProgressView()
+                        Text("Loading…").foregroundStyle(.secondary).font(.caption)
+                    }
+                }
+
+                VStack(spacing: Spacing.s) {
+                    ForEach(attachments) { document in
+                        attachmentRow(document)
+                    }
+                }
             }
             .padding(Spacing.m + Spacing.xs)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .cardSurface(cornerRadius: CornerRadius.m)
         }
+    }
+
+    private func attachmentRow(_ document: DocumentSummary) -> some View {
+        Button {
+            Task { await download(document) }
+        } label: {
+            HStack(spacing: Spacing.m) {
+                Image(systemName: icon(for: document.contentType))
+                    .foregroundStyle(.tint)
+                    .font(.title3)
+                    .frame(width: 32)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(document.title ?? document.fileName)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    HStack(spacing: Spacing.xs) {
+                        if document.title != nil {
+                            Text(document.fileName)
+                                .lineLimit(1)
+                        }
+                        if let size = document.sizeBytes {
+                            if document.title != nil { Text("·") }
+                            Text(byteFormatter.string(fromByteCount: size))
+                        }
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                if attachmentDownloading == document.id {
+                    ProgressView()
+                } else {
+                    Image(systemName: "square.and.arrow.down")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, Spacing.xs)
+        }
+        .buttonStyle(.plain)
+        .disabled(attachmentDownloading != nil)
+    }
+
+    private func icon(for contentType: String?) -> String {
+        guard let contentType else { return "doc" }
+        let lower = contentType.lowercased()
+        if lower.contains("pdf") { return "doc.richtext" }
+        if lower.hasPrefix("image/") { return "photo" }
+        if lower.hasPrefix("video/") { return "film" }
+        if lower.hasPrefix("audio/") { return "music.note" }
+        if lower.contains("word") || lower.contains("document") { return "doc.text" }
+        if lower.contains("sheet") || lower.contains("excel") { return "tablecells" }
+        if lower.contains("presentation") || lower.contains("powerpoint") { return "rectangle.on.rectangle" }
+        if lower.contains("zip") || lower.contains("compressed") { return "doc.zipper" }
+        return "doc"
+    }
+
+    private var byteFormatter: ByteCountFormatter {
+        let f = ByteCountFormatter()
+        f.allowedUnits = [.useKB, .useMB, .useGB]
+        f.countStyle = .file
+        return f
     }
 
     @ViewBuilder

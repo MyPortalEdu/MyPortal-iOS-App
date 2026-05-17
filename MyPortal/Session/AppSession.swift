@@ -32,18 +32,21 @@ final class AppSession {
     let bulletinsService: BulletinsService
     let meService: MeService
     let schoolService: SchoolService
+    let timetableService: TimetableService
 
     init(
         apiClient: APIClient? = nil,
         bulletinsService: BulletinsService? = nil,
         meService: MeService? = nil,
-        schoolService: SchoolService? = nil
+        schoolService: SchoolService? = nil,
+        timetableService: TimetableService? = nil
     ) {
         let client = apiClient ?? LiveAPIClient.shared
         self.apiClient = client
         self.bulletinsService = bulletinsService ?? LiveBulletinsService(apiClient: client)
         self.meService = meService ?? LiveMeService(apiClient: client)
         self.schoolService = schoolService ?? LiveSchoolService()
+        self.timetableService = timetableService ?? LiveTimetableService(apiClient: client)
     }
 
     func bootstrap() async {
@@ -104,13 +107,15 @@ final class AppSession {
         apiClient: APIClient = MockAPIClient(),
         bulletinsService: BulletinsService? = nil,
         meService: MeService? = nil,
-        schoolService: SchoolService? = nil
+        schoolService: SchoolService? = nil,
+        timetableService: TimetableService? = nil
     ) -> AppSession {
         let session = AppSession(
             apiClient: apiClient,
             bulletinsService: bulletinsService,
             meService: meService,
-            schoolService: schoolService
+            schoolService: schoolService,
+            timetableService: timetableService
         )
         session.school = school
         session.phase = phase

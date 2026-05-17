@@ -51,6 +51,23 @@ nonisolated struct LiveBulletinsService: BulletinsService {
         return try await apiClient.get(path)
     }
 
+    func attachments(bulletinId: UUID, directoryId: UUID) async throws -> [DocumentSummary] {
+        let bid = bulletinId.uuidString.lowercased()
+        let did = directoryId.uuidString.lowercased()
+        let contents: DirectoryContents = try await apiClient.get(
+            "api/bulletins/\(bid)/attachments/directories/\(did)/contents"
+        )
+        return contents.documents
+    }
+
+    func downloadAttachment(bulletinId: UUID, documentId: UUID) async throws -> Data {
+        let bid = bulletinId.uuidString.lowercased()
+        let did = documentId.uuidString.lowercased()
+        return try await apiClient.get(
+            "api/bulletins/\(bid)/attachments/documents/\(did)/download"
+        )
+    }
+
     private static let encoder: JSONEncoder = {
         let e = JSONEncoder()
         e.dateEncodingStrategy = .iso8601
