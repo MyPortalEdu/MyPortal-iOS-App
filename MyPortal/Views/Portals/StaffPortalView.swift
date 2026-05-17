@@ -93,7 +93,7 @@ private struct StaffHomeView: View {
         bulletinsState = .loading
         do {
             let page = try await session.bulletinsService.list(page: 1, pageSize: 25)
-            bulletins = Self.sort(page.items)
+            bulletins = BulletinSummary.feedOrder(page.items)
             bulletinsState = .loaded
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -110,20 +110,6 @@ private struct StaffHomeView: View {
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             timetableState = .error(message)
-        }
-    }
-
-    /// Pinned first (newest pin first), then most recent. Mirrors the SPA order
-    /// so a staff user moving between web and mobile sees the same feed.
-    private static func sort(_ items: [BulletinSummary]) -> [BulletinSummary] {
-        items.sorted { lhs, rhs in
-            switch (lhs.pinnedAt, rhs.pinnedAt) {
-            case let (l?, r?): return l > r
-            case (_?, nil): return true
-            case (nil, _?): return false
-            case (nil, nil):
-                return (lhs.createdAt ?? .distantPast) > (rhs.createdAt ?? .distantPast)
-            }
         }
     }
 }
