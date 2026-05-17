@@ -1,7 +1,7 @@
 import Foundation
 
 /// Fetches the current user's profile + permissions from `/api/me`. Replaces
-/// scattered `apiClient.get("api/me")` calls so AppSession has a typed handle.
+/// scattered `apiClient.get("api/v1/me")` calls so AppSession has a typed handle.
 protocol MeService: Sendable {
     func fetch() async throws -> UserInfo
 }
@@ -9,7 +9,7 @@ protocol MeService: Sendable {
 nonisolated struct LiveMeService: MeService {
     let apiClient: APIClient
     func fetch() async throws -> UserInfo {
-        try await apiClient.get("api/me")
+        try await apiClient.get("api/v1/me")
     }
 }
 

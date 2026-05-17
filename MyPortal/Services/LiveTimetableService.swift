@@ -5,7 +5,7 @@ nonisolated struct LiveTimetableService: TimetableService {
 
     func sessions(on date: Date) async throws -> [TimetableEntry] {
         let day = Self.dayFormatter.string(from: date)
-        return try await apiClient.get("api/me/sessions?date=\(day)")
+        return try await apiClient.get("api/v1/me/sessions?date=\(day)")
     }
 
     /// Server expects a calendar-day key, not an instant — strip the time

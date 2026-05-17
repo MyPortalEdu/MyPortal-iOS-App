@@ -31,21 +31,21 @@ final class AppSession {
     let apiClient: APIClient
     let bulletinsService: BulletinsService
     let meService: MeService
-    let schoolService: SchoolService
+    let serverIdentityService: ServerIdentityService
     let timetableService: TimetableService
 
     init(
         apiClient: APIClient? = nil,
         bulletinsService: BulletinsService? = nil,
         meService: MeService? = nil,
-        schoolService: SchoolService? = nil,
+        serverIdentityService: ServerIdentityService? = nil,
         timetableService: TimetableService? = nil
     ) {
         let client = apiClient ?? LiveAPIClient.shared
         self.apiClient = client
         self.bulletinsService = bulletinsService ?? LiveBulletinsService(apiClient: client)
         self.meService = meService ?? LiveMeService(apiClient: client)
-        self.schoolService = schoolService ?? LiveSchoolService()
+        self.serverIdentityService = serverIdentityService ?? LiveServerIdentityService()
         self.timetableService = timetableService ?? LiveTimetableService(apiClient: client)
     }
 
@@ -107,14 +107,14 @@ final class AppSession {
         apiClient: APIClient = MockAPIClient(),
         bulletinsService: BulletinsService? = nil,
         meService: MeService? = nil,
-        schoolService: SchoolService? = nil,
+        serverIdentityService: ServerIdentityService? = nil,
         timetableService: TimetableService? = nil
     ) -> AppSession {
         let session = AppSession(
             apiClient: apiClient,
             bulletinsService: bulletinsService,
             meService: meService,
-            schoolService: schoolService,
+            serverIdentityService: serverIdentityService,
             timetableService: timetableService
         )
         session.school = school

@@ -4,17 +4,17 @@ nonisolated struct LiveBulletinsService: BulletinsService {
     let apiClient: APIClient
 
     func list(page: Int, pageSize: Int) async throws -> PageResult<BulletinSummary> {
-        try await apiClient.get("api/bulletins?page=\(page)&pageSize=\(pageSize)")
+        try await apiClient.get("api/v1/bulletins?page=\(page)&pageSize=\(pageSize)")
     }
 
     func details(id: UUID) async throws -> BulletinDetails {
-        try await apiClient.get("api/bulletins/\(id.uuidString.lowercased())")
+        try await apiClient.get("api/v1/bulletins/\(id.uuidString.lowercased())")
     }
 
     func create(_ request: BulletinUpsertRequest) async throws -> UUID {
         let body = try Self.encoder.encode(request)
         let response: IdResponse = try await apiClient.post(
-            "api/bulletins",
+            "api/v1/bulletins",
             body: body,
             contentType: "application/json"
         )
@@ -24,7 +24,7 @@ nonisolated struct LiveBulletinsService: BulletinsService {
     func update(id: UUID, _ request: BulletinUpsertRequest) async throws {
         let body = try Self.encoder.encode(request)
         let _: EmptyResponse = try await apiClient.put(
-            "api/bulletins/\(id.uuidString.lowercased())",
+            "api/v1/bulletins/\(id.uuidString.lowercased())",
             body: body,
             contentType: "application/json"
         )
@@ -32,13 +32,13 @@ nonisolated struct LiveBulletinsService: BulletinsService {
 
     func delete(id: UUID) async throws {
         let _: EmptyResponse = try await apiClient.delete(
-            "api/bulletins/\(id.uuidString.lowercased())"
+            "api/v1/bulletins/\(id.uuidString.lowercased())"
         )
     }
 
     func acknowledge(id: UUID) async throws {
         let _: EmptyResponse = try await apiClient.post(
-            "api/bulletins/\(id.uuidString.lowercased())/acknowledge",
+            "api/v1/bulletins/\(id.uuidString.lowercased())/acknowledge",
             body: nil,
             contentType: "application/json"
         )
@@ -46,8 +46,8 @@ nonisolated struct LiveBulletinsService: BulletinsService {
 
     func categories(includeInactive: Bool) async throws -> [BulletinCategory] {
         let path = includeInactive
-            ? "api/bulletincategories?includeInactive=true"
-            : "api/bulletincategories"
+            ? "api/v1/bulletincategories?includeInactive=true"
+            : "api/v1/bulletincategories"
         return try await apiClient.get(path)
     }
 
@@ -55,7 +55,7 @@ nonisolated struct LiveBulletinsService: BulletinsService {
         let bid = bulletinId.uuidString.lowercased()
         let did = directoryId.uuidString.lowercased()
         let contents: DirectoryContents = try await apiClient.get(
-            "api/bulletins/\(bid)/attachments/directories/\(did)/contents"
+            "api/v1/bulletins/\(bid)/attachments/directories/\(did)/contents"
         )
         return contents.documents
     }
@@ -64,7 +64,7 @@ nonisolated struct LiveBulletinsService: BulletinsService {
         let bid = bulletinId.uuidString.lowercased()
         let did = documentId.uuidString.lowercased()
         return try await apiClient.get(
-            "api/bulletins/\(bid)/attachments/documents/\(did)/download"
+            "api/v1/bulletins/\(bid)/attachments/documents/\(did)/download"
         )
     }
 

@@ -171,8 +171,13 @@ struct SchoolSetupView: View {
         status = .checking
         Task {
             do {
-                let name = try await session.schoolService.name(at: url)
-                status = .found(SchoolConfig(baseURL: url, name: name))
+                // Confirms the URL points at a MyPortal server (via Product
+                // pinning inside the service) and gives us back the school
+                // display name in the same round-trip. Empty schoolName is fine
+                // — the user can still continue to sign-in; the welcome card
+                // falls back to "your school".
+                let identity = try await session.serverIdentityService.identify(at: url)
+                status = .found(SchoolConfig(baseURL: url, name: identity.schoolName ?? ""))
             } catch {
                 status = .error((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
             }

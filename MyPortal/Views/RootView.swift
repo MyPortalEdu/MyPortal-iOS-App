@@ -42,7 +42,7 @@ struct RootView: View {
         .environment(AppSession.preview(
             phase: .authenticated(.previewStaff),
             apiClient: MockAPIClient().stubbingGet(
-                "api/bulletins?page=1&pageSize=25",
+                "api/v1/bulletins?page=1&pageSize=25",
                 with: PageResult(items: BulletinSummary.previewSet, totalItems: BulletinSummary.previewSet.count)
             )
         ))
