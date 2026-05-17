@@ -63,12 +63,12 @@ struct SchoolSetupView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("School portal URL")
                     .font(.headline)
-                Text("Ask your school administrator if you're not sure. It usually looks like portal.yourschool.org.")
+                Text("Ask your school administrator if you're not sure. It usually looks like myportal.yourschool.org.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
 
-            TextField("https://yourschool.example.com", text: $urlText)
+            TextField("https://myportal.example.com", text: $urlText)
                 .textContentType(.URL)
                 .keyboardType(.URL)
                 .textInputAutocapitalization(.never)
@@ -102,7 +102,7 @@ struct SchoolSetupView: View {
         case .checking:
             HStack(spacing: 10) {
                 ProgressView()
-                Text("Checking…")
+                Text("Connecting...")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -152,7 +152,7 @@ struct SchoolSetupView: View {
                 .frame(maxWidth: .infinity)
         default:
             Button(action: check) {
-                Text("Check")
+                Text("Connect")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
